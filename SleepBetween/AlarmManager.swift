@@ -5,9 +5,13 @@ import ActivityKit
 class AlarmManager: ObservableObject {
     @Published var wakeUpTime: Date?
     @Published var isAlarmActive: Bool = false
+    @Published var errorMessage: String?
+    @Published var showError: Bool = false
+    @Published var timeRemaining: String = ""
     
     @available(iOS 16.1, *)
     private var currentActivity: Activity<WakeUpActivityAttributes>?
+    private var updateTimer: Timer?
     
     init() {
         checkForExistingAlarms()
@@ -27,6 +31,9 @@ class AlarmManager: ObservableObject {
         // Start Live Activity
         startLiveActivity(for: time)
         
+        // Start UI update timer
+        startUIUpdates()
+        
         print("Alarm set for \(time)")
     }
     
@@ -37,9 +44,14 @@ class AlarmManager: ObservableObject {
         // Stop Live Activity
         stopLiveActivity()
         
+        // Stop timers
+        updateTimer?.invalidate()
+        updateTimer = nil
+        
         // Reset state
         wakeUpTime = nil
         isAlarmActive = false
+        timeRemaining = ""
         
         print("Alarm cancelled")
     }
@@ -63,10 +75,14 @@ class AlarmManager: ObservableObject {
         )
         
         UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Error scheduling notification: \(error)")
-            } else {
-                print("Notification scheduled successfully")
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("Error scheduling notification: \(error)")
+                    self.errorMessage = "Failed to schedule alarm: \(error.localizedDescription)"
+                    self.showError = true
+                } else {
+                    print("Notification scheduled successfully")
+                }
             }
         }
     }
@@ -98,6 +114,10 @@ class AlarmManager: ObservableObject {
                 print("Live Activity started")
             } catch {
                 print("Error starting Live Activity: \(error)")
+                DispatchQueue.main.async {
+                    self.errorMessage = "Live Activities unavailable: \(error.localizedDescription)"
+                    self.showError = true
+                }
             }
         } else {
             print("Live Activities not available on this iOS version")
@@ -182,8 +202,46 @@ class AlarmManager: ObservableObject {
                    let trigger = alarmRequest.trigger as? UNCalendarNotificationTrigger,
                    let nextTriggerDate = trigger.nextTriggerDate() {
                     self.wakeUpTime = nextTriggerDate
+                    if self.isAlarmActive {
+                        self.startUIUpdates()
+                    }
                 }
             }
+        }
+    }
+    
+    private func startUIUpdates() {
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            guard let self = self, let wakeUpTime = self.wakeUpTime else { return }
+            
+            let remaining = self.timeUntilWakeUp(from: wakeUpTime)
+            
+            if remaining <= 0 {
+                DispatchQueue.main.async {
+                    self.timeRemaining = "Time to wake up!"
+                    self.isAlarmActive = false
+                }
+                self.updateTimer?.invalidate()
+                self.updateTimer = nil
+            } else {
+                DispatchQueue.main.async {
+                    self.timeRemaining = self.formatTimeRemaining(remaining)
+                }
+            }
+        }
+    }
+    
+    private func formatTimeRemaining(_ timeInterval: TimeInterval) -> String {
+        let hours = Int(timeInterval) / 3600
+        let minutes = Int(timeInterval % 3600) / 60
+        let seconds = Int(timeInterval) % 60
+        
+        if hours > 0 {
+            return "\(hours)h \(minutes)m \(seconds)s"
+        } else if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        } else {
+            return "\(seconds)s"
         }
     }
 }

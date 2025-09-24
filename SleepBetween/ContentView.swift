@@ -43,6 +43,14 @@ struct ContentView: View {
                                         .foregroundColor(.green)
                                         .fontWeight(.medium)
                                 }
+                                
+                                if !alarmManager.timeRemaining.isEmpty {
+                                    Text(alarmManager.timeRemaining)
+                                        .font(.title3)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.blue)
+                                        .padding(.top, 5)
+                                }
                             }
                         }
                         .padding(.vertical, 30)
@@ -122,6 +130,14 @@ struct ContentView: View {
                 alarmManager.setAlarm(for: selectedTime)
                 showTimePicker = false
             }
+        }
+        .alert("Error", isPresented: $alarmManager.showError) {
+            Button("OK") {
+                alarmManager.showError = false
+                alarmManager.errorMessage = nil
+            }
+        } message: {
+            Text(alarmManager.errorMessage ?? "An unknown error occurred")
         }
     }
 }
